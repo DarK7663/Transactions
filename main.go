@@ -24,6 +24,11 @@ type RegisterUser struct {
 	Password string `json:"password"`
 }
 
+type AuthenticateUser struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 func main() {
 	Initialize()
 	app := fiber.New()
@@ -118,9 +123,30 @@ func main() {
 		})
 	})
 
-	// app.Post("user/authenticate", func(c fiber.Ctx) error {
+	app.Post("user/authenticate", func(c fiber.Ctx) error {
+		var authUser AuthenticateUser
 
-	// })
+		if err := c.Bind().Body(&authUser); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+		_, err := repo.AuthenticateUser(authUser.Email, authUser.Password)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+		return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+			"message": "Authenticated successfully",
+		})
+	})
+
+	app.Post("user/sendmoney", func(c fiber.Ctx) error {
+		var transfer TransferRequest
+
+		return nil
+	})
 
 	app.Delete("/user/:id", func(c fiber.Ctx) error {
 		idStr := c.Params("id")

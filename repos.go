@@ -212,7 +212,6 @@ func (r *TransactionRepository) SendMoney(ctx context.Context, req TransferReque
 		return nil
 
 	})
-
 	if err != nil {
 		r.logger.Error("transfer failed",
 			"reference", req.Reference,
