@@ -1,6 +1,7 @@
-package main
+package repository
 
 import (
+	"Transaction/db/model"
 	"context"
 	"errors"
 	"fmt"
@@ -23,11 +24,6 @@ var (
 	ErrSelfTransfer      = errors.New("нельзя перевести деньги самому себе")
 )
 
-type TransactionRepository struct {
-	db     *gorm.DB
-	logger *slog.Logger
-}
-
 type TransferRequest struct {
 	SenderID    uint
 	RecipientID uint
@@ -36,19 +32,28 @@ type TransferRequest struct {
 	Description string
 }
 
+type TransferHandeler struct {
+	repo model.Transaction
+}
+
+type TransactionRepository struct {
+	db     *gorm.DB
+	logger *slog.Logger
+}
+
 func NewTaskRepository(db *gorm.DB) *TransactionRepository {
 	return &TransactionRepository{
 		db: db,
 	}
 }
 
-func (r *TransactionRepository) CreateUser(name, email, password string) (*User, error) {
+func (r *TransactionRepository) CreateUser(name, email, password string) (*model.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
 		return nil, fmt.Errorf("failde to hash password: %w", err)
 	}
 
-	user := &User{
+	user := &model.User{
 		Name:     name,
 		Email:    email,
 		Password: string(hashedPassword),
@@ -61,8 +66,8 @@ func (r *TransactionRepository) CreateUser(name, email, password string) (*User,
 	return user, nil
 }
 
-func (r *TransactionRepository) SearchUser(id uint) (*User, error) {
-	var user User
+func (r *TransactionRepository) SearchUser(id uint) (*model.User, error) {
+	var user model.User
 	if err := r.db.Where("id = ?", id).First(&user).Error; err != nil {
 		fmt.Println("User not found")
 		return nil, err
@@ -70,8 +75,8 @@ func (r *TransactionRepository) SearchUser(id uint) (*User, error) {
 	return &user, nil
 }
 
-func (r *TransactionRepository) UpdateUser(id uint, name, email string) (*User, error) {
-	var userUp User
+func (r *TransactionRepository) UpdateUser(id uint, name, email string) (*model.User, error) {
+	var userUp model.User
 
 	if _, err := r.SearchUser(id); err != nil {
 		return nil, err
@@ -90,20 +95,20 @@ func (r *TransactionRepository) DeleteUser(id uint) error {
 		return err
 	}
 
-	if err := r.db.Delete(&User{}, id).Error; err != nil {
+	if err := r.db.Delete(&model.User{}, id).Error; err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *TransactionRepository) AuthenticateUser(email, password string) (*User, error) {
+func (r *TransactionRepository) AuthenticateUser(email, password string) (*model.User, error) {
 
 	var ErrInvalidCredentials = errors.New("неверный email или пароль")
 
 	if email == "" || password == "" {
 		return nil, ErrInvalidCredentials
 	}
-	var user User
+	var user model.User
 
 	if err := r.db.Where("email = ?", email).Take(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -120,13 +125,13 @@ func (r *TransactionRepository) AuthenticateUser(email, password string) (*User,
 	return &user, nil
 }
 
-func (r *TransactionRepository) RegisterUser(name, email, password string) (*User, error) {
+func (r *TransactionRepository) RegisterUser(name, email, password string) (*model.User, error) {
 
 	if name == "" || email == "" || password == "" {
 		return nil, errors.New("все поля должны быть заполнены")
 	}
 
-	var user = &User{
+	var user = &model.User{
 		Name:  name,
 		Email: email,
 	}
@@ -142,17 +147,17 @@ func (r *TransactionRepository) RegisterUser(name, email, password string) (*Use
 	return user, nil
 }
 
-func (r *TransactionRepository) SendMoney(ctx context.Context, req TransferRequest) (*Transaction, error) {
+func (r *TransactionRepository) SendMoney(ctx context.Context, req TransferRequest) (*model.Transaction, error) {
 
-	if err := validateTransferRequest(req); err != nil {
+	if err := ValidateTransferRequest(req); err != nil {
 		return nil, err
 	}
 
-	var resultTx *Transaction
+	var resultTx *model.Transaction
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 
-		var existing Transaction
+		var existing model.Transaction
 
 		if err := tx.Where("reference = ?", req.Reference).Take(&existing).Error; err != nil { // возврат перевода
 			resultTx = &existing
@@ -161,7 +166,7 @@ func (r *TransactionRepository) SendMoney(ctx context.Context, req TransferReque
 			return fmt.Errorf("check idempotency: %w", err)
 		}
 
-		var sender User
+		var sender model.User
 
 		// блокировка отправителя
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", req.SenderID).Take(&sender).Error; err != nil {
@@ -171,7 +176,7 @@ func (r *TransactionRepository) SendMoney(ctx context.Context, req TransferReque
 			return fmt.Errorf("lock sender: %w", err)
 		}
 
-		var recipient User
+		var recipient model.User
 
 		// блокировка получателя
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", req.RecipientID).Take(&recipient).Error; err != nil {
@@ -196,7 +201,7 @@ func (r *TransactionRepository) SendMoney(ctx context.Context, req TransferReque
 			return fmt.Errorf("update recipient balance: %w", err)
 		}
 
-		transaction := Transaction{
+		transaction := model.Transaction{
 			SenderID:    req.SenderID,
 			RecipientID: req.RecipientID,
 			Amount:      req.Amount,
@@ -243,7 +248,7 @@ func (r *TransactionRepository) SendMoney(ctx context.Context, req TransferReque
 	return resultTx, nil
 }
 
-func validateTransferRequest(req TransferRequest) error {
+func ValidateTransferRequest(req TransferRequest) error {
 	if req.SenderID == 0 || req.RecipientID == 0 {
 		return ErrUserNotFound
 	}

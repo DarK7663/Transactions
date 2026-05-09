@@ -1,6 +1,7 @@
-package main
+package db
 
 import (
+	"Transaction/db/model"
 	"fmt"
 	"log"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var db *gorm.DB
+var DB *gorm.DB
 
 func Initialize() {
 	var err error
@@ -29,12 +30,12 @@ func Initialize() {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 		dbHost, dbUser, dbPassword, dbName, dbPort, sslMode)
 
-	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database: ", err)
 	}
 
-	sqlDB, err := db.DB()
+	sqlDB, err := DB.DB()
 	if err != nil {
 		log.Fatal("Failed to get underlying sql.DB: ", err)
 	}
@@ -48,5 +49,5 @@ func Initialize() {
 	fmt.Printf("Pool stats: Open=%d, InUse=%d, Idle=%d", stats.OpenConnections, stats.InUse, stats.Idle)
 
 	log.Println("Successfully connected to database!")
-	db.AutoMigrate(&User{})
+	DB.AutoMigrate(&model.User{})
 }
